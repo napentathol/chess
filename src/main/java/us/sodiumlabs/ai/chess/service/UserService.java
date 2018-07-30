@@ -6,7 +6,6 @@ import spark.Request;
 import spark.Response;
 import us.sodiumlabs.ai.chess.data.external.ImmutableNewSessionResponse;
 import us.sodiumlabs.ai.chess.data.external.NewSessionRequest;
-import us.sodiumlabs.ai.chess.data.external.NewSessionResponse;
 import us.sodiumlabs.ai.chess.data.internal.user.ImmutableUser;
 import us.sodiumlabs.ai.chess.data.internal.user.User;
 
@@ -52,7 +51,7 @@ public class UserService {
         return user;
     }
 
-    private NewSessionResponse newSession(final Request request, final Response response) {
+    private String newSession(final Request request, final Response response) {
         try {
             final NewSessionRequest newSessionRequest = objectMapper.readValue(request.body(), NewSessionRequest.class);
             final UUID uuid = UUID.randomUUID();
@@ -73,10 +72,11 @@ public class UserService {
             userMap.putIfAbsent(uuid, user);
 
             response.type("application/json");
-            return new ImmutableNewSessionResponse.Builder()
+
+            return objectMapper.writeValueAsString(new ImmutableNewSessionResponse.Builder()
                 .withSecret(secretString)
                 .withUserId(uuid.toString())
-                .build();
+                .build());
         } catch (final IOException e) {
             throw new RuntimeException("Unable to read new session request.", e);
         }

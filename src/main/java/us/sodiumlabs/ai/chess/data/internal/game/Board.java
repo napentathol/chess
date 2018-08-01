@@ -1,4 +1,4 @@
-package us.sodiumlabs.ai.chess.data.internal;
+package us.sodiumlabs.ai.chess.data.internal.game;
 
 import java.util.Arrays;
 import java.util.Objects;
@@ -7,7 +7,7 @@ public class Board {
     private static final int BOARD_DIMENSION = 8;
 
     private static final int[] INIT_VECTOR = {
-        0xcbae_dabc,
+        0xcbad_eabc,
         0x9999_9999,
         0,
         0,
@@ -30,7 +30,7 @@ public class Board {
             int r = 0;
             for(int i = 0; i < BOARD_DIMENSION; i++) {
                 r <<= 4;
-                r += playerPieces[BOARD_DIMENSION - i - 1].serialize();
+                r += playerPieces[i].serialize();
             }
             return r;
         }
@@ -40,7 +40,7 @@ public class Board {
 
             int r = representation;
             for(int i = 0; i < BOARD_DIMENSION; i++) {
-                playerPieces[i] = PlayerPiece.deserialize(r & PlayerPiece.PLAYER_PIECE_MASK);
+                playerPieces[BOARD_DIMENSION - i - 1] = PlayerPiece.deserialize(r & PlayerPiece.PLAYER_PIECE_MASK);
                 r >>= 4;
             }
 
@@ -60,6 +60,27 @@ public class Board {
         @Override
         public String toString() {
             return Arrays.toString(playerPieces);
+        }
+
+        PlayerPiece get(int x) {
+            if(x < 0 || x > 7) throw new IllegalArgumentException("X must be between 0 and 7 (inclusive); was: " + x);
+            return playerPieces[x];
+        }
+
+        Row put(final PlayerPiece toPut, final int x) {
+            if(x < 0 || x > 7) throw new IllegalArgumentException("X must be between 0 and 7 (inclusive); was: " + x);
+
+            final PlayerPiece[] newPieces = new PlayerPiece[BOARD_DIMENSION];
+
+            for(int i = 0; i < BOARD_DIMENSION; i++) {
+                if(i == x) {
+                    newPieces[i] = Objects.requireNonNull(toPut);
+                } else {
+                    newPieces[i] = playerPieces[i];
+                }
+            }
+
+            return new Row(newPieces);
         }
     }
 
@@ -90,6 +111,37 @@ public class Board {
         }
 
         return new Board(rows);
+    }
+
+    public PlayerPiece getPieceAtPosition(final int x, final int y) {
+        if(x < 0 || x > 7) throw new IllegalArgumentException("X must be between 0 and 7 (inclusive); was: " + x);
+        if(y < 0 || y > 7) throw new IllegalArgumentException("Y must be between 0 and 7 (inclusive); was: " + y);
+
+        return rows[y].get(x);
+    }
+
+    private Board put(final PlayerPiece toPut, final int x, final int y) {
+        if(x < 0 || x > 7) throw new IllegalArgumentException("X must be between 0 and 7 (inclusive); was: " + x);
+        if(y < 0 || y > 7) throw new IllegalArgumentException("Y must be between 0 and 7 (inclusive); was: " + y);
+
+        Objects.requireNonNull(toPut);
+
+        final Row[] newRows = new Row[BOARD_DIMENSION];
+
+        for(int i = 0; i < BOARD_DIMENSION; i++) {
+            if(i == y) {
+                newRows[i] = rows[i].put(toPut, x);
+            } else {
+                newRows[i] = rows[i];
+            }
+        }
+
+        return new Board(newRows);
+    }
+
+    public Board move(final Move move) {
+        return put(getPieceAtPosition(move.getStartX(), move.getStartY()), move.getEndX(), move.getEndY())
+            .put(PlayerPiece.EMPTY, move.getStartX(), move.getStartY());
     }
 
     @Override

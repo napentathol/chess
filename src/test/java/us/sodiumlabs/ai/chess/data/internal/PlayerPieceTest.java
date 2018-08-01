@@ -1,24 +1,25 @@
 package us.sodiumlabs.ai.chess.data.internal;
 
 import org.junit.Test;
+import us.sodiumlabs.ai.chess.data.internal.game.PlayerPiece;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
 
 public class PlayerPieceTest {
 
     @Test
     public void testSerialization() {
-        for(final Player pl : Player.values()) {
-            for (final Piece pi : Piece.values()) {
+        for(final PlayerPiece.Player pl : PlayerPiece.Player.values()) {
+            for (final PlayerPiece.Piece pi : PlayerPiece.Piece.values()) {
                 final PlayerPiece initial = new PlayerPiece(pi, pl);
                 final PlayerPiece deserialized = PlayerPiece.deserialize(initial.serialize());
 
-                if( Player.NONE == pl ^ Piece.EMPTY == pi ) {
-                    if( Piece.EMPTY == pi ) {
-                        assertEquals(Player.NONE, deserialized.player);
-                        assertEquals(Piece.EMPTY, deserialized.piece);
+                if( PlayerPiece.Player.NONE == pl ^ PlayerPiece.Piece.EMPTY == pi ) {
+                    if( PlayerPiece.Piece.EMPTY == pi ) {
+                        assertEquals(PlayerPiece.Player.NONE, deserialized.player);
+                        assertEquals(PlayerPiece.Piece.EMPTY, deserialized.piece);
                     } else {
-                        assertEquals(Player.WHITE, deserialized.player);
+                        assertEquals(PlayerPiece.Player.WHITE, deserialized.player);
                         assertEquals(pi, deserialized.piece);
                     }
                 } else {

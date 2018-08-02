@@ -1,11 +1,14 @@
 package us.sodiumlabs.ai.chess.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.hash.Hashing;
 import spark.Request;
 import spark.Response;
 import us.sodiumlabs.ai.chess.data.external.ImmutableNewSessionResponse;
+import us.sodiumlabs.ai.chess.data.external.ListUserResponse;
 import us.sodiumlabs.ai.chess.data.external.NewSessionRequest;
+import us.sodiumlabs.ai.chess.data.external.OutputUser;
 import us.sodiumlabs.ai.chess.data.internal.user.ImmutableUser;
 import us.sodiumlabs.ai.chess.data.internal.user.User;
 
@@ -17,7 +20,9 @@ import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.stream.Collectors;
 
+import static spark.Spark.get;
 import static spark.Spark.halt;
 import static spark.Spark.post;
 
@@ -31,7 +36,9 @@ public class UserService {
     }
 
     public void initialize() {
-        post("/newSession", this::newSession);
+        post("/user", this::newSession);
+        get("/user", this::getUsers);
+        get("/user/:userId", this::getUser);
     }
 
     public User validateSignature(final Request request) {
@@ -79,6 +86,30 @@ public class UserService {
                 .build());
         } catch (final IOException e) {
             throw new RuntimeException("Unable to read new session request.", e);
+        }
+    }
+
+    private String getUsers(final Request request, final Response response) {
+        response.type("application/json");
+        try {
+            return objectMapper.writeValueAsString(ListUserResponse.builder()
+                .withUsers(userMap.values().stream()
+                    .map(OutputUser::fromUser)
+                    .collect(Collectors.toList()))
+                .build());
+        } catch (final JsonProcessingException e) {
+            throw new RuntimeException("Unable to materialize user map as json.");
+        }
+    }
+
+    private String getUser(final Request request, final Response response) {
+        final UUID userId = UUID.fromString(request.params(":userId"));
+        final User user = userMap.get(userId);
+        response.type("application/json");
+        try {
+            return objectMapper.writeValueAsString(OutputUser.fromUser(user));
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException("Unable to materialize user: " + userId, e);
         }
     }
 }

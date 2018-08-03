@@ -5,10 +5,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.hash.Hashing;
 import spark.Request;
 import spark.Response;
-import us.sodiumlabs.ai.chess.data.external.ImmutableNewSessionResponse;
-import us.sodiumlabs.ai.chess.data.external.ListUserResponse;
-import us.sodiumlabs.ai.chess.data.external.NewSessionRequest;
-import us.sodiumlabs.ai.chess.data.external.OutputUser;
+import us.sodiumlabs.ai.chess.data.external.user.ListUserResponse;
+import us.sodiumlabs.ai.chess.data.external.user.NewSessionRequest;
+import us.sodiumlabs.ai.chess.data.external.user.NewSessionResponse;
+import us.sodiumlabs.ai.chess.data.external.user.OutputUser;
 import us.sodiumlabs.ai.chess.data.internal.user.ImmutableUser;
 import us.sodiumlabs.ai.chess.data.internal.user.User;
 
@@ -17,14 +17,13 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.stream.Collectors;
 
-import static spark.Spark.get;
-import static spark.Spark.halt;
-import static spark.Spark.post;
+import static spark.Spark.*;
 
 public class UserService {
     private final ConcurrentMap<UUID, User> userMap = new ConcurrentHashMap<>();
@@ -45,7 +44,7 @@ public class UserService {
         final UUID userId = UUID.fromString(request.headers("X-User"));
         final String signature = request.headers("X-Signature");
 
-        final User user = userMap.get(userId);
+        final User user = getRequiredUser(userId);
 
         if(user == null) throw halt(401, "User id invalid.");
 
@@ -79,8 +78,7 @@ public class UserService {
             userMap.putIfAbsent(uuid, user);
 
             response.type("application/json");
-
-            return objectMapper.writeValueAsString(new ImmutableNewSessionResponse.Builder()
+            return objectMapper.writeValueAsString(NewSessionResponse.builder()
                 .withSecret(secretString)
                 .withUserId(uuid.toString())
                 .build());
@@ -98,18 +96,22 @@ public class UserService {
                     .collect(Collectors.toList()))
                 .build());
         } catch (final JsonProcessingException e) {
-            throw new RuntimeException("Unable to materialize user map as json.");
+            throw new RuntimeException("Unable to materialize users as json.");
         }
     }
 
     private String getUser(final Request request, final Response response) {
         final UUID userId = UUID.fromString(request.params(":userId"));
-        final User user = userMap.get(userId);
+        final User user = getRequiredUser(userId);
         response.type("application/json");
         try {
             return objectMapper.writeValueAsString(OutputUser.fromUser(user));
         } catch (JsonProcessingException e) {
             throw new RuntimeException("Unable to materialize user: " + userId, e);
         }
+    }
+
+    User getRequiredUser(final UUID uuid) {
+        return Optional.ofNullable(userMap.get(uuid)).orElseThrow(() -> halt(404, "Missing user: " + uuid));
     }
 }

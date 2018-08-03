@@ -6,6 +6,7 @@ import us.sodiumlabs.ai.chess.data.internal.user.User;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Objects;
+import java.util.UUID;
 
 public class Game {
     private final User whitePlayer;
@@ -16,11 +17,14 @@ public class Game {
 
     private Board currentBoard = Board.INITIAL_BOARD;
 
-    private final LinkedList<Move> moveHistory = new LinkedList<>();
+    private final List<Move> moveHistory = new LinkedList<>();
 
     private final Object synchronizer = new Object();
 
-    public Game(final User whitePlayer, final User blackPlayer) {
+    private final UUID gameId;
+
+    public Game(final UUID gameId, final User whitePlayer, final User blackPlayer) {
+        this.gameId = Objects.requireNonNull(gameId);
         this.whitePlayer = Objects.requireNonNull(whitePlayer);
         this.blackPlayer = Objects.requireNonNull(blackPlayer);
     }
@@ -28,6 +32,12 @@ public class Game {
     public Board getCurrentBoard() {
         synchronized (synchronizer) {
             return currentBoard;
+        }
+    }
+
+    public String getCurrentPlayer() {
+        synchronized (synchronizer) {
+            return currentPlayer.name();
         }
     }
 
@@ -50,5 +60,17 @@ public class Game {
         synchronized(synchronizer) {
             return ImmutableList.copyOf(moveHistory);
         }
+    }
+
+    public UUID getGameId() {
+        return gameId;
+    }
+
+    public User getBlackPlayer() {
+        return blackPlayer;
+    }
+
+    public User getWhitePlayer() {
+        return whitePlayer;
     }
 }

@@ -1,4 +1,4 @@
-package us.sodiumlabs.ai.chess.data.external;
+package us.sodiumlabs.ai.chess.data.external.user;
 
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;

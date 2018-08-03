@@ -6,10 +6,11 @@ import us.sodiumlabs.ai.chess.data.internal.game.Move;
 import java.util.Objects;
 
 public class GameRuleValidator {
-    public void validateMove(final Game game, final Move move) {
+    public boolean validateMove(final Game game, final Move move) {
         Objects.requireNonNull(game);
         Objects.requireNonNull(move);
 
         // Implement more checks
+        return true;
     }
 }

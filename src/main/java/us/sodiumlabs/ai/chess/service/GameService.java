@@ -12,6 +12,7 @@ import us.sodiumlabs.ai.chess.data.external.game.NewGameRequest;
 import us.sodiumlabs.ai.chess.data.external.game.OutputGame;
 import us.sodiumlabs.ai.chess.data.internal.game.Game;
 import us.sodiumlabs.ai.chess.data.internal.game.Move;
+import us.sodiumlabs.ai.chess.data.internal.user.User;
 import us.sodiumlabs.ai.chess.rules.GameRuleValidator;
 
 import java.io.IOException;
@@ -63,11 +64,16 @@ public class GameService {
             final UUID gameId = UUID.fromString(request.params(":gameId"));
             final Game game = getRequiredGame(gameId);
             final Move move = objectMapper.readValue(request.body(), MoveData.class).toMove();
+            final User user = userService.validateSignature(request);
 
-            if(!gameRuleValidator.validateMove(game, move)) throw halt(400, "Invalid move: " + move);
+            game.updateBoard(() -> {
+                if(!game.getCurrentPlayerUser().equals(user)) throw halt(403, "Not your turn.");
+                if(!gameRuleValidator.validateMove(game, move)) throw halt(400, "Invalid move: " + move);
+                return move;
+            });
 
             response.type("application/json");
-            return objectMapper.writeValueAsString(OutputGame.fromGame(getRequiredGame(gameId)));
+            return objectMapper.writeValueAsString(OutputGame.fromGame(game));
         } catch (IOException e) {
             throw new RuntimeException("Unable to read move request.", e);
         }

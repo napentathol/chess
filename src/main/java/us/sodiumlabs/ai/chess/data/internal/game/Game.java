@@ -7,6 +7,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.function.Supplier;
 
 public class Game {
     private final User whitePlayer;
@@ -47,8 +48,9 @@ public class Game {
         }
     }
 
-    public void updateBoard(final Move move) {
+    public void updateBoard(final Supplier<Move> moveSupplier) {
         synchronized (synchronizer) {
+            final Move move = moveSupplier.get();
             currentBoard = currentBoard.move(move);
             currentPlayer = PlayerPiece.Player.WHITE == currentPlayer
                 ? PlayerPiece.Player.BLACK : PlayerPiece.Player.WHITE;

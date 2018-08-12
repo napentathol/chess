@@ -15,6 +15,8 @@ import us.sodiumlabs.ai.chess.data.internal.user.User;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.time.ZonedDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.Base64;
 import java.util.Objects;
 import java.util.Optional;
@@ -23,9 +25,14 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.stream.Collectors;
 
-import static spark.Spark.*;
+import static spark.Spark.get;
+import static spark.Spark.halt;
+import static spark.Spark.post;
+import static spark.Spark.put;
 
 public class UserService {
+    private static final int MAX_SIGNATURE_AGE = 10;
+
     private final ConcurrentMap<UUID, User> userMap = new ConcurrentHashMap<>();
 
     private final ObjectMapper objectMapper;
@@ -35,26 +42,46 @@ public class UserService {
     }
 
     public void initialize() {
+        put("/user/testSig", this::testSignature);
         post("/user", this::newSession);
         get("/user", this::getUsers);
         get("/user/:userId", this::getUser);
     }
 
     public User validateSignature(final Request request) {
-        final UUID userId = UUID.fromString(request.headers("X-User"));
-        final String signature = request.headers("X-Signature");
+        final String timestampHeader = request.headers("X-Time");
+        if(timestampHeader == null) throw halt(401, "No timestamp");
+        final ZonedDateTime timestamp = ZonedDateTime.parse(timestampHeader);
+        final ZonedDateTime now = ZonedDateTime.now();
 
+        final long seconds = ChronoUnit.SECONDS.between(timestamp, now);
+
+        if(seconds > MAX_SIGNATURE_AGE || seconds < -MAX_SIGNATURE_AGE) throw halt(401, "Signature too old!");
+
+        final UUID userId = UUID.fromString(request.headers("X-User"));
         final User user = getRequiredUser(userId);
 
-        if(user == null) throw halt(401, "User id invalid.");
+        if(user == null) throw halt(401, "User id invalid!");
 
         final String computedSignature = Hashing.sha256()
-            .hashString( user.getSecret() + request.body(), StandardCharsets.UTF_8 )
+            .hashString(user.getSecret() + request.body() + timestamp.toString(), StandardCharsets.UTF_8)
             .toString();
 
-        if(!Objects.equals(signature, computedSignature)) throw  halt(401, "Computer signature invalid!");
+        final String signature = request.headers("X-Signature");
+        if(!Objects.equals(signature, computedSignature)) throw  halt(401, "Received invalid signature!");
 
         return user;
+    }
+
+    private String testSignature(final Request request, final Response response) {
+        final User user = validateSignature(request);
+
+        response.type("application/json");
+        try {
+            return objectMapper.writeValueAsString(OutputUser.fromUser(user));
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException("Unable to materialize user: " + user.getUserId(), e);
+        }
     }
 
     private String newSession(final Request request, final Response response) {

@@ -21,7 +21,6 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 import static spark.Spark.get;
@@ -52,9 +51,8 @@ public class GameService {
     public void initialize() {
         get("/game", this::getGames);
         get("/game/:gameId", this::getGame);
-        get("/game/turn/:gameId", this::getCurrentTurn);
-        get("/game/byUserId/:userId", this::getGamesForUser);
-        get("/game/history/:gameId", this::getGameHistory);
+        get("/game/:gameId/turn", this::getCurrentTurn);
+        get("/game/:gameId/history", this::getGameHistory);
         post("/game", this::createGame);
         put("/game/:gameId", this::putMove);
     }
@@ -112,23 +110,6 @@ public class GameService {
         }
     }
 
-    private String getGamesForUser(final Request request, final Response response) {
-        final UUID userId = UUID.fromString(request.params(":userId"));
-
-        response.type("application/json");
-        try {
-            return objectMapper.writeValueAsString(ListGameResponse.builder()
-                .withGames(gameMap.values().stream()
-                    .filter(((Predicate<Game>) g -> Objects.equals(g.getBlackPlayer().getUserId(), userId))
-                        .or(g -> Objects.equals(g.getWhitePlayer().getUserId(), userId)))
-                    .map(OutputGame::fromGame)
-                    .collect(Collectors.toList()))
-                .build());
-        } catch (final JsonProcessingException e) {
-            throw new RuntimeException("Unable to materialize games as json.");
-        }
-    }
-
     private String getCurrentTurn(final Request request, final Response response) {
         final UUID gameId = UUID.fromString(request.params(":gameId"));
 
@@ -152,9 +133,15 @@ public class GameService {
 
     private String getGames(final Request request, final Response response) {
         response.type("application/json");
+
+        final Optional<UUID> userId = Optional.ofNullable(request.queryParams("userId")).map(UUID::fromString);
+
         try {
             return objectMapper.writeValueAsString(ListGameResponse.builder()
                 .withGames(gameMap.values().stream()
+                    .filter(g -> userId.map( u -> Objects.equals(g.getBlackPlayer().getUserId(), u)
+                            || Objects.equals(g.getWhitePlayer().getUserId(), u))
+                        .orElse(true))
                     .map(OutputGame::fromGame)
                     .collect(Collectors.toList()))
                 .build());

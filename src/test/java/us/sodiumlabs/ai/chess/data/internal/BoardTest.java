@@ -17,21 +17,19 @@ public class BoardTest {
         final int[] initVector = Board.INITIAL_BOARD.serialize();
 
         final Board afterMove = Board.INITIAL_BOARD.move(Move.builder()
-            .withStartX(6)
-            .withStartY(7)
-            .withEndX(5)
-            .withEndY(5)
+            .withStartX(6).withStartY(0)
+            .withEndX(5).withEndY(2)
             .build());
 
         final Board expected = Board.deserialize( new int[] {
-            0xcbad_eabc,
-            0x9999_9999,
-            0,
-            0,
-            0,
-            0x0000_0300,
+            0x4325_6204,
             0x1111_1111,
-            0x4325_6204
+            0x0000_0300,
+            0,
+            0,
+            0,
+            0x9999_9999,
+            0xcbad_eabc
         });
 
         assertEquals(expected, afterMove);
@@ -43,21 +41,19 @@ public class BoardTest {
         final int[] initVector = Board.INITIAL_BOARD.serialize();
 
         final Board afterMove = Board.INITIAL_BOARD.move(Move.builder()
-            .withStartX(4)
-            .withStartY(7)
-            .withEndX(3)
-            .withEndY(5)
+            .withStartX(4).withStartY(0)
+            .withEndX(3).withEndY(2)
             .build());
 
         final Board expected = Board.deserialize( new int[] {
-            0xcbad_eabc,
-            0x9999_9999,
-            0,
-            0,
-            0,
-            0x0006_0000,
+            0x4325_0234,
             0x1111_1111,
-            0x4325_0234
+            0x0006_0000,
+            0,
+            0,
+            0,
+            0x9999_9999,
+            0xcbad_eabc,
         });
 
         assertEquals(expected, afterMove);

@@ -17,11 +17,14 @@ public abstract class OutputGame {
 
     public abstract String getCurrentPlayer();
 
+    public abstract String getGameState();
+
     public static OutputGame fromGame(final Game game) {
         return new ImmutableOutputGame.Builder()
             .withGameId(game.getGameId().toString())
             .withBoard(game.getCurrentBoard().serialize())
             .withCurrentPlayer(game.getCurrentPlayer())
+            .withGameState(game.getGameState().name())
             .build();
     }
 }

@@ -7,14 +7,14 @@ public class Board {
     private static final int BOARD_DIMENSION = 8;
 
     private static final int[] INIT_VECTOR = {
-        0xcbad_eabc,
-        0x9999_9999,
-        0,
-        0,
-        0,
-        0,
+        0x4325_6234,
         0x1111_1111,
-        0x4325_6234
+        0,
+        0,
+        0,
+        0,
+        0x9999_9999,
+        0xcbad_eabc
     };
 
     public static final Board INITIAL_BOARD = Board.deserialize(INIT_VECTOR);

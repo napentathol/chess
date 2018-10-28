@@ -4,56 +4,34 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.guava.GuavaModule;
 import com.google.common.hash.Hashing;
-import org.apache.http.HttpRequest;
-import org.apache.http.HttpResponse;
-import org.apache.http.client.HttpClient;
-import org.apache.http.client.RedirectStrategy;
-import org.apache.http.client.methods.HttpGet;
-import org.apache.http.client.methods.HttpUriRequest;
-import org.apache.http.client.methods.RequestBuilder;
-import org.apache.http.entity.ContentType;
-import org.apache.http.entity.StringEntity;
-import org.apache.http.impl.client.CloseableHttpClient;
-import org.apache.http.impl.client.HttpClientBuilder;
-import org.apache.http.protocol.HttpContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import spark.utils.IOUtils;
 import us.sodiumlabs.ai.chess.data.external.user.NewSessionResponse;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.lang.invoke.MethodHandles;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.Optional;
-import java.util.concurrent.TimeUnit;
 
-public class SessionHelper implements AutoCloseable {
+public class SessionHelper {
     private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-    private final CloseableHttpClient httpClient;
+    private final HttpClient httpClient;
 
     private final ObjectMapper objectMapper;
 
     private final NewSessionResponse newSessionResponse;
 
     public SessionHelper() {
-        this.httpClient = HttpClientBuilder.create()
-            .setRedirectStrategy(new RedirectStrategy() {
-                @Override
-                public boolean isRedirected(HttpRequest request, HttpResponse response, HttpContext context) {
-                    return false;
-                }
-
-                @Override
-                public HttpUriRequest getRedirect(HttpRequest request, HttpResponse response, HttpContext context) {
-                    throw new RuntimeException("Never redirect.");
-                }
-            })
-            .setConnectionTimeToLive(10, TimeUnit.SECONDS )
-            .build();
+        this.httpClient = HttpClient.newHttpClient();
         this.objectMapper = new ObjectMapper();
         objectMapper.registerModule(new GuavaModule());
 
@@ -64,20 +42,24 @@ public class SessionHelper implements AutoCloseable {
     {
         try {
             // Register user
-            final HttpResponse r1 = httpClient.execute(RequestBuilder.post("http://localhost:4567/user")
-                .setEntity(new StringEntity("{\"username\":\"bob\"}", ContentType.APPLICATION_JSON))
-                .build());
-            final String o1 = IOUtils.toString(r1.getEntity().getContent());
+            final HttpRequest request = HttpRequest.newBuilder(new URI("http://localhost:4567/user"))
+                .POST(HttpRequest.BodyPublishers.ofString("{\"username\":\"bob\"}"))
+                .header("Content-Type", "application/json")
+                .build();
+
+            final String o1 = httpClient.send(request, HttpResponse.BodyHandlers.ofString()).body();
 
             log.info("Received new session response: " + o1);
 
             return objectMapper.readValue(o1, NewSessionResponse.class);
         } catch (final IOException e) {
             throw new UncheckedIOException(e);
+        } catch (final InterruptedException | URISyntaxException e) {
+            throw new RuntimeException(e);
         }
     }
 
-    public <T> T execute(final String method, final String uri, final Object payload, final Class<T> clazz) {
+    public <T> T execute(final String method, final URI uri, final Object payload, final Class<T> clazz) {
         try {
             return execute(method, uri, Optional.of(objectMapper.writeValueAsString(payload)), clazz);
         } catch (JsonProcessingException e) {
@@ -85,7 +67,7 @@ public class SessionHelper implements AutoCloseable {
         }
     }
 
-    public HttpResponse execute(final String method, final String uri, final Object payload) {
+    public HttpResponse<String> execute(final String method, final URI uri, final Object payload) {
         try {
             return execute(method, uri, Optional.of(objectMapper.writeValueAsString(payload)));
         } catch (final IOException e) {
@@ -93,14 +75,14 @@ public class SessionHelper implements AutoCloseable {
         }
     }
 
-    public <T> T get(final String uri, final Class<T> clazz) {
-        return execute(HttpGet.METHOD_NAME, uri, Optional.empty(), clazz);
+    public <T> T get(final URI uri, final Class<T> clazz) {
+        return execute("GET", uri, Optional.empty(), clazz);
     }
 
-    private <T> T execute(final String method, final String uri, final Optional<String> payload, final Class<T> clazz) {
+    private <T> T execute(final String method, final URI uri, final Optional<String> payload, final Class<T> clazz) {
         try {
-            final HttpResponse response = execute(method, uri, payload);
-            final String value = IOUtils.toString(response.getEntity().getContent());
+            final HttpResponse<String> response = execute(method, uri, payload);
+            final String value = response.body();
             log.info("Received response: " + value);
             return objectMapper.readValue(value, clazz);
         } catch (final IOException e) {
@@ -108,40 +90,35 @@ public class SessionHelper implements AutoCloseable {
         }
     }
 
-    private HttpResponse execute(final String method, final String uri, final Optional<String> payload) {
-        final RequestBuilder requestBuilder = RequestBuilder.create(method).setUri(uri);
+    private HttpResponse<String> execute(final String method, final URI uri, final Optional<String> payload) {
+        final HttpRequest.Builder requestBuilder = HttpRequest.newBuilder(uri)
+            .method(method, payload
+                .map(HttpRequest.BodyPublishers::ofString)
+                .orElse(HttpRequest.BodyPublishers.noBody()));
 
         payload.ifPresent(s -> {
             final String now = OffsetDateTime.now(ZoneOffset.UTC).toString();
             final String hash = Hashing.sha256()
-                .hashString(newSessionResponse.getSecret() + payload + now, StandardCharsets.UTF_8)
+                .hashString(newSessionResponse.getSecret() + s + now, StandardCharsets.UTF_8)
                 .toString();
 
             requestBuilder
-                .addHeader("X-Time", now)
-                .addHeader("X-User", newSessionResponse.getUserId())
-                .addHeader("X-Signature", hash)
-                .setEntity(new StringEntity(s, ContentType.APPLICATION_JSON));
+                .header("Content-Type", "application/json")
+                .header("X-Time", now)
+                .header("X-User", newSessionResponse.getUserId())
+                .header("X-Signature", hash);
         });
 
         try {
-            return httpClient.execute(requestBuilder.build());
+            return httpClient.send(requestBuilder.build(), HttpResponse.BodyHandlers.ofString());
         } catch (final IOException e) {
             throw new UncheckedIOException(e);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
         }
     }
 
     public String getUserId() {
         return newSessionResponse.getUserId();
-    }
-
-    @Override
-    public void close()
-    {
-        try {
-            httpClient.close();
-        } catch (final IOException e) {
-            throw new UncheckedIOException(e);
-        }
     }
 }

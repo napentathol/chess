@@ -3,32 +3,24 @@ package us.sodiumlabs.ai.chess.it;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.guava.GuavaModule;
 import com.google.common.hash.Hashing;
-import org.apache.http.HttpRequest;
-import org.apache.http.HttpResponse;
-import org.apache.http.client.RedirectStrategy;
-import org.apache.http.client.methods.HttpUriRequest;
-import org.apache.http.client.methods.RequestBuilder;
-import org.apache.http.entity.ContentType;
-import org.apache.http.entity.StringEntity;
-import org.apache.http.impl.client.CloseableHttpClient;
-import org.apache.http.impl.client.HttpClientBuilder;
-import org.apache.http.protocol.HttpContext;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import spark.utils.IOUtils;
 import us.sodiumlabs.ai.chess.data.external.user.ListUserResponse;
 import us.sodiumlabs.ai.chess.data.external.user.NewSessionResponse;
 import us.sodiumlabs.ai.chess.data.external.user.OutputUser;
 
 import java.io.IOException;
 import java.lang.invoke.MethodHandles;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.Objects;
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -37,39 +29,27 @@ public class UserServiceTests {
     private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
     @Test
-    public void test_goodHash() throws IOException {
+    public void test_goodHash() throws IOException, InterruptedException {
 
         final ObjectMapper objectMapper = new ObjectMapper();
         objectMapper.registerModule(new GuavaModule());
 
-        final CloseableHttpClient httpClient = HttpClientBuilder.create()
-            .setRedirectStrategy(new RedirectStrategy() {
-                @Override
-                public boolean isRedirected(HttpRequest request, HttpResponse response, HttpContext context) {
-                    return false;
-                }
-
-                @Override
-                public HttpUriRequest getRedirect(HttpRequest request, HttpResponse response, HttpContext context) {
-                    throw new RuntimeException("Never redirect.");
-                }
-            })
-            .setConnectionTimeToLive(10, TimeUnit.SECONDS )
-            .build();
+        final HttpClient httpClient = HttpClient.newHttpClient();
 
         // Register user
-        final HttpResponse r1 = httpClient.execute(RequestBuilder.post("http://localhost:4567/user")
-            .setEntity(new StringEntity("{\"username\":\"bob\"}", ContentType.APPLICATION_JSON))
-            .build());
-        final String o1 = IOUtils.toString(r1.getEntity().getContent());
+        HttpRequest request = HttpRequest.newBuilder(URI.create("http://localhost:4567/user"))
+            .POST(HttpRequest.BodyPublishers.ofString("{\"username\":\"bob\"}"))
+            .header("Content-Type", "application/json")
+            .build();
+        final String o1 = httpClient.send(request, HttpResponse.BodyHandlers.ofString()).body();
 
         log.info("Received new session response: " + o1);
 
         final NewSessionResponse user = objectMapper.readValue(o1, NewSessionResponse.class);
 
         // Ensure user is registered
-        final HttpResponse r2 = httpClient.execute(RequestBuilder.get("http://localhost:4567/user").build());
-        final String o2 = IOUtils.toString(r2.getEntity().getContent());
+        request = HttpRequest.newBuilder(URI.create("http://localhost:4567/user")).GET().build();
+        final String o2 = httpClient.send(request, HttpResponse.BodyHandlers.ofString()).body();
         log.info("Received list user response: " + o2);
         final ListUserResponse users = objectMapper.readValue(o2, ListUserResponse.class);
 
@@ -90,35 +70,35 @@ public class UserServiceTests {
             .toString();
         log.info(String.format("Sending body [%s], time [%s], hash [%s]", body, now, hash));
 
-        final HttpResponse r3 = httpClient.execute(RequestBuilder.put("http://localhost:4567/user/testSig")
-            .addHeader("X-Time", now)
-            .addHeader("X-User", user.getUserId())
-            .addHeader("X-Signature", hash)
-            .setEntity(new StringEntity(body))
-            .build());
+        request = HttpRequest.newBuilder(URI.create("http://localhost:4567/user/testSig"))
+            .PUT(HttpRequest.BodyPublishers.ofString(body))
+            .header("X-Time", now)
+            .header("X-User", user.getUserId())
+            .header("X-Signature", hash)
+            .build();
+        final HttpResponse<String> r3 = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        log.info("Received test signature response: " + r3.body());
 
-        final String o3 = IOUtils.toString(r3.getEntity().getContent());
-        log.info("Received test signature response: " + o3);
-
-        assertEquals(200, r3.getStatusLine().getStatusCode());
+        assertEquals(200, r3.statusCode());
 
         // Ensure signature check works properly.
         final String now2 = OffsetDateTime.now(ZoneOffset.UTC).toString();
         final String hash2 = "badHash";
         log.info(String.format("Sending body [%s], time [%s], hash [%s]", body, now2, hash2));
 
-        final HttpResponse r4 = httpClient.execute(RequestBuilder.put("http://localhost:4567/user/testSig")
-            .addHeader("X-Time", now2)
-            .addHeader("X-User", user.getUserId())
-            .addHeader("X-Signature", hash2)
-            .setEntity(new StringEntity(body))
-            .build());
+        request = HttpRequest.newBuilder(URI.create("http://localhost:4567/user/testSig"))
+            .PUT(HttpRequest.BodyPublishers.ofString(body))
+            .header("Content-Type", "application/json")
+            .header("X-Time", now2)
+            .header("X-User", user.getUserId())
+            .header("X-Signature", hash2)
+            .build();
 
-        final String o4 = IOUtils.toString(r4.getEntity().getContent());
-        log.info("Received test signature response: " + o4);
+        final HttpResponse<String> r4 = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        log.info("Received test signature response: " + r4.body());
 
-        assertEquals(401, r4.getStatusLine().getStatusCode());
-        assertEquals("Received invalid signature!", o4);
+        assertEquals(401, r4.statusCode());
+        assertEquals("Received invalid signature!", r4.body());
 
         // Ensure date check works properly.
         final String now3 = OffsetDateTime.now(ZoneOffset.UTC).minusSeconds(30).toString();
@@ -127,33 +107,34 @@ public class UserServiceTests {
             .toString();
         log.info(String.format("Sending body [%s], time [%s], hash [%s]", body, now3, hash3));
 
-        final HttpResponse r5 = httpClient.execute(RequestBuilder.put("http://localhost:4567/user/testSig")
-            .addHeader("X-Time", now3)
-            .addHeader("X-User", user.getUserId())
-            .addHeader("X-Signature", hash3)
-            .setEntity(new StringEntity(body))
-            .build());
+        request = HttpRequest.newBuilder(URI.create("http://localhost:4567/user/testSig"))
+            .PUT(HttpRequest.BodyPublishers.ofString(body))
+            .header("Content-Type", "application/json")
+            .header("X-Time", now3)
+            .header("X-User", user.getUserId())
+            .header("X-Signature", hash3)
+            .build();
 
-        final String o5 = IOUtils.toString(r5.getEntity().getContent());
-        log.info("Received test signature response: " + o5);
+        final HttpResponse<String> r5 = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        log.info("Received test signature response: " + r5.body());
 
-        assertEquals(401, r5.getStatusLine().getStatusCode());
-        assertEquals("Signature too old!", o5);
+        assertEquals(401, r5.statusCode());
+        assertEquals("Signature too old!", r5.body());
 
         // Ensure user id check works properly.
         final String now4 = OffsetDateTime.now(ZoneOffset.UTC).toString();
-        final HttpResponse r6 = httpClient.execute(RequestBuilder.put("http://localhost:4567/user/testSig")
-            .addHeader("X-Time", now4)
-            .addHeader("X-User", UUID.randomUUID().toString())
-            .setEntity(new StringEntity(body))
-            .build());
 
-        final String o6 = IOUtils.toString(r6.getEntity().getContent());
-        log.info("Received test signature response: " + o6);
+        request = HttpRequest.newBuilder(URI.create("http://localhost:4567/user/testSig"))
+            .PUT(HttpRequest.BodyPublishers.ofString(body))
+            .header("Content-Type", "application/json")
+            .header("X-Time", now4)
+            .header("X-User", UUID.randomUUID().toString())
+            .build();
 
-        assertEquals(404, r6.getStatusLine().getStatusCode());
-        assertTrue(o6.startsWith("Missing user: "));
+        final HttpResponse<String> r6 = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        log.info("Received test signature response: " + r6.body());
 
-        httpClient.close();
+        assertEquals(404, r6.statusCode());
+        assertTrue(r6.body().startsWith("Missing user: "));
     }
 }
